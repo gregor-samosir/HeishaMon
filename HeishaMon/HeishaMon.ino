@@ -50,7 +50,7 @@ float readpercentage = 0;
 
 
 //useful for debugging, outputs info to a separate mqtt topic
-bool outputMqttLog = true;
+bool outputMqttLog = false;
 //toggle to dump received hex data in log
 bool outputHexDump = false;
 // toggle to dump  extralog to serial1
@@ -69,8 +69,7 @@ dallasData actDallasData[MAX_DALLAS_SENSORS];
 //s0 enabled?
 bool use_s0 = false;
 //global array for s0 data
-s0Data actS0Data[MAX_S0_COUNTERS];
-
+s0Data actS0Data[NUM_S0_COUNTERS];
 
 // instead of passing array pointers between functions we just define this in the global scope
 #define MAXDATASIZE 256
@@ -107,23 +106,40 @@ PubSubClient mqtt_client(mqtt_wifi_client);
 void mqtt_reconnect()
 {
   Serial1.println("Reconnecting to mqtt server ...");
-  if (mqtt_client.connect(wifi_hostname, mqtt_username, mqtt_password, mqtt_willtopic, 1, true, "Offline"))
+  char topic[256];
+  sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_willtopic);
+  if (mqtt_client.connect(wifi_hostname, mqtt_username, mqtt_password, topic, 1, true, "Offline"))
   {
-    mqtt_client.subscribe(mqtt_set_quiet_mode_topic);
-    mqtt_client.subscribe(mqtt_set_operationmode_topic);
-    mqtt_client.subscribe(mqtt_set_heatpump_state_topic);
-    mqtt_client.subscribe(mqtt_set_z1_heat_request_temperature_topic);
-    mqtt_client.subscribe(mqtt_set_z1_cool_request_temperature_topic);
-    mqtt_client.subscribe(mqtt_set_z2_heat_request_temperature_topic);
-    mqtt_client.subscribe(mqtt_set_z2_cool_request_temperature_topic);
-    mqtt_client.subscribe(mqtt_set_force_DHW_topic);
-    mqtt_client.subscribe(mqtt_set_force_defrost_topic);
-    mqtt_client.subscribe(mqtt_set_force_sterilization_topic);
-    mqtt_client.subscribe(mqtt_set_holiday_topic);
-    mqtt_client.subscribe(mqtt_set_powerful_topic);
-    mqtt_client.subscribe(mqtt_set_dhw_temp_topic);
-    mqtt_client.subscribe(mqtt_send_raw_value_topic);
-    mqtt_client.publish(mqtt_willtopic, "Online");
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_quiet_mode_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_operationmode_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_heatpump_state_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_z1_heat_request_temperature_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_z1_cool_request_temperature_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_z2_heat_request_temperature_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_z2_cool_request_temperature_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_force_DHW_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_force_defrost_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_force_sterilization_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_holiday_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_powerful_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_set_dhw_temp_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_send_raw_value_topic);
+    mqtt_client.subscribe(topic);
+    sprintf(topic, "%s/%s", mqtt_topic_base, mqtt_willtopic);
+    mqtt_client.publish(topic, "Online");
   }
 }
 
@@ -132,7 +148,9 @@ void log_message(char* string)
   Serial1.println(string);
   if (outputMqttLog)
   {
-    mqtt_client.publish(mqtt_logtopic, string);
+    char log_topic[256];
+    sprintf(log_topic, "%s/%s", mqtt_topic_base, mqtt_logtopic);
+    mqtt_client.publish(log_topic, string);
   }
 }
 
@@ -274,8 +292,8 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
       msg[i] = (char)payload[i];
     }
     msg[length] = '\0';
-
-    if (strcmp(topic, mqtt_send_raw_value_topic) == 0)
+    char* topic_command = topic + strlen(mqtt_topic_base) + 1; //strip base plus seperator from topic
+    if (strcmp(topic_command, mqtt_send_raw_value_topic) == 0)
     { // send a raw hex string
       byte *rawcommand;
       rawcommand = (byte *) malloc(length);
@@ -284,7 +302,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
       sprintf(log_msg, "sending raw value"); log_message(log_msg);
       send_command(rawcommand, length);
     } else {
-      send_heatpump_command(topic, msg, send_command, log_message);
+      send_heatpump_command(topic_command, msg, send_command, log_message);
 
     }
     mqttcallbackinprogress = false;
@@ -317,13 +335,13 @@ void setupOTA() {
 void setupHttp() {
   httpUpdater.setup(&httpServer, update_path, update_username, ota_password);
   httpServer.on("/", [] {
-    handleRoot(&httpServer, readpercentage);
+    handleRoot(&httpServer, readpercentage, use_1wire, use_s0);
   });
   httpServer.on("/tablerefresh", [] {
-    handleTableRefresh(&httpServer, actData, actDallasData);
+    handleTableRefresh(&httpServer, actData, actDallasData, actS0Data);
   });
   httpServer.on("/json", [] {
-    handleJsonOutput(&httpServer, actData, actDallasData);
+    handleJsonOutput(&httpServer, actData, actDallasData, actS0Data);
   });
   httpServer.on("/factoryreset", [] {
     handleFactoryReset(&httpServer);
@@ -332,7 +350,7 @@ void setupHttp() {
     handleReboot(&httpServer);
   });
   httpServer.on("/settings", [] {
-    handleSettings(&httpServer, wifi_hostname, ota_password, mqtt_server, mqtt_port, mqtt_username, mqtt_password, use_1wire, listenonly);
+    handleSettings(&httpServer, wifi_hostname, ota_password, mqtt_topic_base, mqtt_server, mqtt_port, mqtt_username, mqtt_password, use_1wire, use_s0, listenonly, actS0Data);
   });
   httpServer.on("/togglelog", [] {
     log_message((char*)"Toggled mqtt log flag");
@@ -354,6 +372,7 @@ void setupHttp() {
 void setupSerial() {
   //debug line on serial1 (D4, GPIO2)
   Serial1.begin(115200);
+  Serial1.println("Starting debugging");
 
   //boot issue's first on normal serial
   Serial.begin(115200);
@@ -384,12 +403,13 @@ void setupMqtt() {
 
 void setup() {
   setupSerial();
-  setupWifi(drd, wifi_hostname, ota_password, mqtt_server, mqtt_port, mqtt_username, mqtt_password, use_1wire, listenonly);
+  setupWifi(drd, wifi_hostname, ota_password, mqtt_topic_base, mqtt_server, mqtt_port, mqtt_username, mqtt_password, use_1wire, use_s0, listenonly, actS0Data);
   MDNS.begin(wifi_hostname);
   setupOTA();
   setupMqtt();
   setupHttp();
   if (use_1wire) initDallasSensors(actDallasData, log_message);
+  if (use_s0) initS0Sensors(actS0Data);
   switchSerial();
 
 }
@@ -426,22 +446,36 @@ void loop() {
   // Allow MDNS processing
   MDNS.update();
 
-  if (!mqtt_client.connected())
-  {
-    mqtt_reconnect();
-  }
   mqtt_client.loop();
 
   read_panasonic_data();
 
   if (use_1wire) dallasLoop(actDallasData, mqtt_client, log_message);
 
+  if (use_s0) s0Loop(actS0Data, mqtt_client, log_message);
+
   // run the data query only each WAITTIME
   if (millis() > nexttime) {
+    if (!mqtt_client.connected())
+    {
+
+      if (WiFi.status() != WL_CONNECTED) {
+        log_message((char *)"Lost WiFi connection, rebooting...");
+        delay(1000);
+        ESP.restart();
+      }
+      if (! WiFi.localIP()) {
+        log_message((char *)"Lost IP configuration, rebooting...");
+        delay(1000);
+        ESP.restart();
+      }
+      mqtt_reconnect();
+    }
     nexttime = millis() + WAITTIME;
     if (!listenonly) send_panasonic_query();
     MDNS.announce();
     //Make sure the LWT is set to Online, even if the broker have marked it dead.
-    mqtt_client.publish(mqtt_willtopic, "Online");
+    sprintf(mqtt_topic, "%s/%s", mqtt_topic_base, mqtt_willtopic);
+    mqtt_client.publish(mqtt_topic, "Online");
   }
 }

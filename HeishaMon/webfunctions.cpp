@@ -58,6 +58,7 @@ static const char refreshJS[] PROGMEM =
   "	function refreshTable(){"
   "		$('#heishavalues').load('/tablerefresh', function(){setTimeout(refreshTable, 30000);});"
   "   $('#dallasvalues').load('/tablerefresh?1wire', function(){setTimeout(refreshTable, 30000);});"
+  "   $('#s0values').load('/tablerefresh?s0', function(){setTimeout(refreshTable, 30000);});"
   "	}"
   "</script>";
 
@@ -73,7 +74,14 @@ static const char selectJS[] PROGMEM =
   "}"
   "</script>";
 
-void(* resetFunc) (void) = 0;
+static const char s0SettingsJS[] PROGMEM =
+  "<script type=\"text/javascript\">"
+  "    function ShowHideS0Div(s0enabled) {"
+  "        var s0settings = document.getElementById(\"s0settings\");"
+  "        s0settings.style.display = s0enabled.checked ? \"block\" : \"none\";"
+  "    }"
+  "</script>";
+
 
 //callback notifying us of the need to save config
 void saveConfigCallback () {
@@ -122,7 +130,7 @@ String getUptime() {
   return String(uptime);
 }
 
-void setupWifi(DoubleResetDetect &drd, char* wifi_hostname, char* ota_password, char* mqtt_server, char* mqtt_port, char* mqtt_username, char* mqtt_password, bool &use_1wire, bool &listenonly) {
+void setupWifi(DoubleResetDetect &drd, char* wifi_hostname, char* ota_password, char* mqtt_topic_base, char* mqtt_server, char* mqtt_port, char* mqtt_username, char* mqtt_password, bool &use_1wire, bool &use_s0, bool &listenonly, s0Data actS0Data[]) {
 
   //first get total memory before we do anything
   getFreeMemory();
@@ -166,11 +174,23 @@ void setupWifi(DoubleResetDetect &drd, char* wifi_hostname, char* ota_password, 
             //read updated parameters, make sure no overflow
             strncpy(wifi_hostname, jsonDoc["wifi_hostname"], 39); wifi_hostname[39] = '\0';
             strncpy(ota_password, jsonDoc["ota_password"], 39); ota_password[39] = '\0';
+            if ( jsonDoc["mqtt_topic_base"] ) {
+              strncpy(mqtt_topic_base, jsonDoc["mqtt_topic_base"], 39); mqtt_topic_base[39] = '\0';
+            }
             strncpy(mqtt_server, jsonDoc["mqtt_server"], 39); mqtt_server[39] = '\0';
             strncpy(mqtt_port, jsonDoc["mqtt_port"], 5); mqtt_port[5] = '\0';
             strncpy(mqtt_username, jsonDoc["mqtt_username"], 39); mqtt_username[39] = '\0';
             strncpy(mqtt_password, jsonDoc["mqtt_password"], 39); mqtt_password[39] = '\0';
             if ( jsonDoc["use_1wire"] == "enabled" ) use_1wire = true;
+            if ( jsonDoc["use_s0"] == "enabled" ) {
+              use_s0 = true;
+              actS0Data[0].gpiopin = jsonDoc["s0_1_gpio"];
+              actS0Data[0].ppkwh = jsonDoc["s0_1_ppkwh"];
+              actS0Data[0].minWatt = jsonDoc["s0_1_minwatt"];
+              actS0Data[1].gpiopin = jsonDoc["s0_2_gpio"];
+              actS0Data[1].ppkwh = jsonDoc["s0_2_ppkwh"];
+              actS0Data[1].minWatt = jsonDoc["s0_2_minwatt"];              
+            }
             if ( jsonDoc["listenonly"] == "enabled" ) listenonly = true;
           } else {
             Serial.println("Failed to load json config, forcing config reset.");
@@ -196,6 +216,7 @@ void setupWifi(DoubleResetDetect &drd, char* wifi_hostname, char* ota_password, 
   WiFiManagerParameter custom_wifi_hostname("wifi_hostname", "wifi hostname", wifi_hostname, 39);
   WiFiManagerParameter custom_ota_password("ota_password", "ota password", ota_password, 39);
   WiFiManagerParameter custom_text2("<p>Configure MQTT settings</p>");
+  WiFiManagerParameter custom_mqtt_topic_base("mqtt topic base", "mqtt topic base", mqtt_topic_base, 39);
   WiFiManagerParameter custom_mqtt_server("server", "mqtt server", mqtt_server, 39);
   WiFiManagerParameter custom_mqtt_port("port", "mqtt port", mqtt_port, 5);
   WiFiManagerParameter custom_mqtt_username("username", "mqtt username", mqtt_username, 39);
@@ -211,13 +232,14 @@ void setupWifi(DoubleResetDetect &drd, char* wifi_hostname, char* ota_password, 
   wifiManager.addParameter(&custom_wifi_hostname);
   wifiManager.addParameter(&custom_ota_password);
   wifiManager.addParameter(&custom_text2);
+  wifiManager.addParameter(&custom_mqtt_topic_base);
   wifiManager.addParameter(&custom_mqtt_server);
   wifiManager.addParameter(&custom_mqtt_port);
   wifiManager.addParameter(&custom_mqtt_username);
   wifiManager.addParameter(&custom_mqtt_password);
 
 
-  wifiManager.setConfigPortalTimeout(180);
+  wifiManager.setConfigPortalTimeout(120);
   wifiManager.setConnectTimeout(10);
   if (!wifiManager.autoConnect("HeishaMon-Setup")) {
     Serial.println("failed to connect and hit timeout");
@@ -233,6 +255,7 @@ void setupWifi(DoubleResetDetect &drd, char* wifi_hostname, char* ota_password, 
   //read updated parameters, make sure no overflow
   strncpy(wifi_hostname, custom_wifi_hostname.getValue(), 39); wifi_hostname[39] = '\0';
   strncpy(ota_password, custom_ota_password.getValue(), 39); ota_password[39] = '\0';
+  strncpy(mqtt_topic_base, custom_mqtt_topic_base.getValue(), 39); mqtt_topic_base[39] = '\0';
   strncpy(mqtt_server, custom_mqtt_server.getValue(), 39); mqtt_server[39] = '\0';
   strncpy(mqtt_port, custom_mqtt_port.getValue(), 5); mqtt_port[5] = '\0';
   strncpy(mqtt_username, custom_mqtt_username.getValue(), 39); mqtt_username[39] = '\0';
@@ -247,6 +270,7 @@ void setupWifi(DoubleResetDetect &drd, char* wifi_hostname, char* ota_password, 
     DynamicJsonDocument jsonDoc(1024);
     jsonDoc["wifi_hostname"] = wifi_hostname;
     jsonDoc["ota_password"] = ota_password;
+    jsonDoc["mqtt_topic_base"] = mqtt_topic_base;
     jsonDoc["mqtt_server"] = mqtt_server;
     jsonDoc["mqtt_port"] = mqtt_port;
     jsonDoc["mqtt_username"] = mqtt_username;
@@ -262,12 +286,12 @@ void setupWifi(DoubleResetDetect &drd, char* wifi_hostname, char* ota_password, 
     configFile.close();
     //end save
   }
-
+  Serial.println("==========");
   Serial.println("local ip");
   Serial.println(WiFi.localIP());
 }
 
-void handleRoot(ESP8266WebServer *httpServer,float readpercentage) {
+void handleRoot(ESP8266WebServer *httpServer, float readpercentage, bool &use_1wire, bool &use_s0) {
   httpServer->setContentLength(CONTENT_LENGTH_UNKNOWN);
   httpServer->send(200, "text/html", "");
   httpServer->sendContent_P(webHeader);
@@ -284,7 +308,8 @@ void handleRoot(ESP8266WebServer *httpServer,float readpercentage) {
 
   httptext = httptext + "<div class=\"w3-bar w3-red\">";
   httptext = httptext + "<button class=\"w3-bar-item w3-button\" onclick=\"openTable('Heatpump')\">Heatpump</button>";
-  httptext = httptext + "<button class=\"w3-bar-item w3-button\" onclick=\"openTable('Dallas')\">Dallas 1-wire</button>";
+  if (use_1wire) httptext = httptext + "<button class=\"w3-bar-item w3-button\" onclick=\"openTable('Dallas')\">Dallas 1-wire</button>";
+  if (use_s0) httptext = httptext + "<button class=\"w3-bar-item w3-button\" onclick=\"openTable('S0')\">S0 kWh meters</button>";
   httptext = httptext + "</div>";
 
   httptext = httptext + "<div class=\"w3-container w3-left\">";
@@ -296,11 +321,19 @@ void handleRoot(ESP8266WebServer *httpServer,float readpercentage) {
 
   httptext = httptext + "<div id=\"Heatpump\" class=\"w3-container w3-center heishatable\">";
   httptext = httptext + "<h2>Current heatpump values</h2>";
-  httptext = httptext + "<table class=\"w3-table-all\"><thead><tr class=\"w3-red\"><th>Topic</th><th>Name</th><th>Value</th><th>Description</th></tr></thead><tbody id=\"heishavalues\"><tr><td>...Loading...</td><td></td></tr></tbody></table></div>";
-  httptext = httptext + "<div id=\"Dallas\" class=\"w3-container w3-center heishatable\" style=\"display:none\">";
-  httptext = httptext + "<h2>Current Dallas 1-wire values</h2>";
-  httptext = httptext + "<table class=\"w3-table-all\"><thead><tr class=\"w3-red\"><th>Sensor</th><th>Temperature</th></tr></thead><tbody id=\"dallasvalues\"><tr><td>...Loading...</td><td></td></tr></tbody></table></div>";
+  httptext = httptext + "<table class=\"w3-table-all\"><thead><tr class=\"w3-red\"><th>Topic</th><th>Name</th><th>Value</th><th>Description</th></tr></thead><tbody id=\"heishavalues\"><tr><td>...Loading...</td><td></td></r></tbody></table></div>";
+  if (use_1wire) {
+    httptext = httptext + "<div id=\"Dallas\" class=\"w3-container w3-center heishatable\" style=\"display:none\">";
+    httptext = httptext + "<h2>Current Dallas 1-wire values</h2>";
+    httptext = httptext + "<table class=\"w3-table-all\"><thead><tr class=\"w3-red\"><th>Sensor</th><th>Temperature</th></tr></thead><tbody id=\"dallasvalues\"><tr><td>...Loading...</td><td></td></tr></tbody></table></div>";
+  }
+  if (use_s0) {
+    httptext = httptext + "<div id=\"S0\" class=\"w3-container w3-center heishatable\" style=\"display:none\">";
+    httptext = httptext + "<h2>Current S0 kWh meters values</h2>";
+    httptext = httptext + "<table class=\"w3-table-all\"><thead><tr class=\"w3-red\"><th>S0 port</th><th>Watt</th></tr></thead><tbody id=\"s0values\"><tr><td>...Loading...</td><td></td></tr></tbody></table></div>";
+  }
   httpServer->sendContent(httptext);
+
 
   httpServer->sendContent_P(menuJS);
   httpServer->sendContent_P(refreshJS);
@@ -310,11 +343,13 @@ void handleRoot(ESP8266WebServer *httpServer,float readpercentage) {
   httpServer->client().stop();
 }
 
-void handleTableRefresh(ESP8266WebServer *httpServer, String actData[], dallasData actDallasData[]) {
+void handleTableRefresh(ESP8266WebServer *httpServer, String actData[], dallasData actDallasData[], s0Data actS0Data[]) {
   httpServer->setContentLength(CONTENT_LENGTH_UNKNOWN);
   httpServer->send(200, "text/html", "");
   if (httpServer->hasArg("1wire")) {
-      httpServer->sendContent(dallasTableOutput(actDallasData));
+    httpServer->sendContent(dallasTableOutput(actDallasData));
+  } else if (httpServer->hasArg("s0")) {
+    httpServer->sendContent(s0TableOutput(actS0Data));
   } else {
     for (unsigned int topic = 0 ; topic < NUMBER_OF_TOPICS ; topic++) {
       String topicdesc;
@@ -339,7 +374,7 @@ void handleTableRefresh(ESP8266WebServer *httpServer, String actData[], dallasDa
   httpServer->client().stop();
 }
 
-void handleJsonOutput(ESP8266WebServer *httpServer, String actData[], dallasData actDallasData[]) {
+void handleJsonOutput(ESP8266WebServer *httpServer, String actData[], dallasData actDallasData[], s0Data actS0Data[]) {
   httpServer->setContentLength(CONTENT_LENGTH_UNKNOWN);
   httpServer->send(200, "application/json", "");
   //begin json
@@ -371,6 +406,9 @@ void handleJsonOutput(ESP8266WebServer *httpServer, String actData[], dallasData
   //1wire data in json
   tabletext =  ",\"1wire\":" + dallasJsonOutput(actDallasData);
   httpServer->sendContent(tabletext);
+  //s0 data in json
+  tabletext =  ",\"s0\":" + s0JsonOutput(actS0Data);
+  httpServer->sendContent(tabletext);
   //end json string
   tabletext = "}";
   httpServer->sendContent(tabletext);
@@ -399,7 +437,7 @@ void handleFactoryReset(ESP8266WebServer *httpServer) {
   SPIFFS.format();
   WiFi.disconnect(true);
   delay(1000);
-  resetFunc();
+  ESP.restart();
 }
 
 void handleReboot(ESP8266WebServer *httpServer) {
@@ -418,10 +456,10 @@ void handleReboot(ESP8266WebServer *httpServer) {
   httpServer->sendContent("");
   httpServer->client().stop();
   delay(1000);
-  resetFunc();
+  ESP.restart();
 }
 
-void handleSettings(ESP8266WebServer *httpServer, char* wifi_hostname, char* ota_password, char* mqtt_server, char* mqtt_port, char* mqtt_username, char* mqtt_password, bool &use_1wire, bool &listenonly) {
+void handleSettings(ESP8266WebServer *httpServer, char* wifi_hostname, char* ota_password, char* mqtt_topic_base, char* mqtt_server, char* mqtt_port, char* mqtt_username, char* mqtt_password, bool &use_1wire, bool &use_s0, bool &listenonly, s0Data actS0Data[]) {
   httpServer->setContentLength(CONTENT_LENGTH_UNKNOWN);
   httpServer->send(200, "text/html", "");
   httpServer->sendContent_P(webHeader);
@@ -441,6 +479,7 @@ void handleSettings(ESP8266WebServer *httpServer, char* wifi_hostname, char* ota
     DynamicJsonDocument jsonDoc(1024);
     jsonDoc["wifi_hostname"] = wifi_hostname;
     jsonDoc["ota_password"] = ota_password;
+    jsonDoc["mqtt_topic_base"] = mqtt_topic_base;
     jsonDoc["mqtt_server"] = mqtt_server;
     jsonDoc["mqtt_port"] = mqtt_port;
     jsonDoc["mqtt_username"] = mqtt_username;
@@ -450,11 +489,16 @@ void handleSettings(ESP8266WebServer *httpServer, char* wifi_hostname, char* ota
     } else {
       jsonDoc["use_1wire"] = "disabled";
     }
+    if (use_s0) {
+      jsonDoc["use_s0"] = "enabled";
+    } else {
+      jsonDoc["use_s0"] = "disabled";
+    }
     if (listenonly) {
       jsonDoc["listenonly"] = "enabled";
     } else {
       jsonDoc["listenonly"] = "disabled";
-    }    
+    }
     if (httpServer->hasArg("wifi_hostname")) {
       jsonDoc["wifi_hostname"] = httpServer->arg("wifi_hostname");
     }
@@ -475,6 +519,9 @@ void handleSettings(ESP8266WebServer *httpServer, char* wifi_hostname, char* ota
         return;
       }
     }
+     if (httpServer->hasArg("mqtt_topic_base")) {
+      jsonDoc["mqtt_topic_base"] = httpServer->arg("mqtt_topic_base");
+    }   
     if (httpServer->hasArg("mqtt_server")) {
       jsonDoc["mqtt_server"] = httpServer->arg("mqtt_server");
     }
@@ -492,12 +539,23 @@ void handleSettings(ESP8266WebServer *httpServer, char* wifi_hostname, char* ota
     } else {
       jsonDoc["use_1wire"] = "disabled";
     }
+    if (httpServer->hasArg("use_s0")) {
+      jsonDoc["use_s0"] = "enabled";
+      if (httpServer->hasArg("s0_1_gpio")) jsonDoc["s0_1_gpio"] = httpServer->arg("s0_1_gpio");
+      if (httpServer->hasArg("s0_1_ppkwh")) jsonDoc["s0_1_ppkwh"] = httpServer->arg("s0_1_ppkwh");
+      if (httpServer->hasArg("s0_1_minwatt")) jsonDoc["s0_1_minwatt"] = httpServer->arg("s0_1_minwatt");
+      if (httpServer->hasArg("s0_2_gpio")) jsonDoc["s0_2_gpio"] = httpServer->arg("s0_2_gpio");
+      if (httpServer->hasArg("s0_2_ppkwh")) jsonDoc["s0_2_ppkwh"] = httpServer->arg("s0_2_ppkwh");
+      if (httpServer->hasArg("s0_2_minwatt")) jsonDoc["s0_2_minwatt"] = httpServer->arg("s0_2_minwatt");
+    } else {
+      jsonDoc["use_s0"] = "disabled";
+    }
     if (httpServer->hasArg("listenonly")) {
       jsonDoc["listenonly"] = "enabled";
     } else {
       jsonDoc["listenonly"] = "disabled";
     }
-    
+
     if (SPIFFS.begin()) {
       File configFile = SPIFFS.open("/config.json", "w");
       if (configFile) {
@@ -515,7 +573,7 @@ void handleSettings(ESP8266WebServer *httpServer, char* wifi_hostname, char* ota
         httpServer->sendContent("");
         httpServer->client().stop();
         delay(1000);
-        resetFunc();
+        ESP.restart();
       }
     }
   }
@@ -532,6 +590,9 @@ void handleSettings(ESP8266WebServer *httpServer, char* wifi_hostname, char* ota
   httptext = httptext + "New update password:<br>";
   httptext = httptext + "<input type=\"password\" name=\"new_ota_password\" value=\"\">";
   httptext = httptext + "<br><br>";
+  httptext = httptext + "Mqtt topic base:<br>";
+  httptext = httptext + "<input type=\"text\" name=\"mqtt_topic_base\" value=\"" + mqtt_topic_base + "\">";
+  httptext = httptext + "<br><br>";  
   httptext = httptext + "Mqtt server:<br>";
   httptext = httptext + "<input type=\"text\" name=\"mqtt_server\" value=\"" + mqtt_server + "\">";
   httptext = httptext + "<br><br>";
@@ -550,7 +611,33 @@ void handleSettings(ESP8266WebServer *httpServer, char* wifi_hostname, char* ota
   } else {
     httptext = httptext + "<input type=\"checkbox\" name=\"use_1wire\" value=\"enabled\">";
   }
-  httptext = httptext + "<br><br>";  
+  httptext = httptext + "<br><br>";
+  httptext = httptext + "Use s0 kWh metering: ";
+  if (use_s0) {
+    httptext = httptext + "<input type=\"checkbox\" onclick=\"ShowHideS0Div(this)\" name=\"use_s0\" value=\"enabled\" checked >";
+    httptext = httptext + "<div id=\"s0settings\" class=\"w3-container w3-center\" style=\"display: block;\">";
+  } else {
+    httptext = httptext + "<input type=\"checkbox\" onclick=\"ShowHideS0Div(this)\" name=\"use_s0\" value=\"enabled\">";
+    httptext = httptext + "<div id=\"s0settings\" class=\"w3-container w3-center\" style=\"display: none;\">";
+  }
+  //begin default S0 pins hack
+  if (actS0Data[0].gpiopin == 255) actS0Data[0].gpiopin = DEFAULT_S0_PIN_1;
+  if (actS0Data[1].gpiopin == 255) actS0Data[1].gpiopin = DEFAULT_S0_PIN_2;
+  //end default S0 pins hack
+  for (int i = 0; i < NUM_S0_COUNTERS; i++) {
+    httptext = httptext + "<br><br>";
+    httptext = httptext + "S0 port " + (i + 1) + " GPIO:<br>";
+    httptext = httptext + "<input type=\"number\" name=\"s0_" + (i + 1) + "_gpio\" value=\"" + actS0Data[i].gpiopin + "\">";
+    httptext = httptext + "<br><br>";
+    httptext = httptext + "S0 port " + (i + 1) + " imp/kwh:<br>";
+    httptext = httptext + "<input type=\"number\" name=\"s0_" + (i + 1) + "_ppkwh\" value=\"" + (actS0Data[i].ppkwh) + "\">";
+    httptext = httptext + "<br><br>";
+    httptext = httptext + "S0 port " + (i + 1) + " minimal Watt:<br>";
+    httptext = httptext + "<input type=\"number\" name=\"s0_" + (i + 1) + "_minwatt\" value=\"" + (actS0Data[i].minWatt) + "\">";
+  }
+  httptext = httptext + "</div>";
+
+  httptext = httptext + "<br><br>";
   httptext = httptext + "Listen only mode: ";
   if (listenonly) {
     httptext = httptext + "<input type=\"checkbox\" name=\"listenonly\" value=\"enabled\" checked >";
@@ -564,6 +651,7 @@ void handleSettings(ESP8266WebServer *httpServer, char* wifi_hostname, char* ota
   httpServer->sendContent(httptext);
 
   httpServer->sendContent_P(menuJS);
+  httpServer->sendContent_P(s0SettingsJS);
   httpServer->sendContent_P(webFooter);
   httpServer->sendContent("");
   httpServer->client().stop();

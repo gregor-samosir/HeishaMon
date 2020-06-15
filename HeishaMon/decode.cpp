@@ -64,21 +64,48 @@ String unknown(byte input) {
 String getOpMode(byte input) {
   switch ((int)input) {
     case 82:
-      return "0";      break;
+      return "0";
     case 83:
-      return "1";      break;
+      return "1";
     case 89:
-      return "2";      break;
+      return "2";
     case 97:
-      return "3";      break;
+      return "3";
     case 98:
-      return "4";      break;
+      return "4";
     case 99:
-      return "5";      break;
+      return "5";
     case 105:
-      return "6";      break;
+      return "6";
+    case 90:
+      return "7";
+    case 106:
+      return "8";
     default:
-      return "-1";      break;
+      return "-1";
+  }
+}
+
+String getModel(byte input) {
+  switch ((int)input) {
+    case 19:
+      return "0";
+    case 20:
+      return "1";
+    case 119:
+      return "2";
+    case 136:
+      return "3";
+    case 134:
+      return "4";
+    case 135:
+      return "5";
+    case 113:
+      return "6";
+    case 67:
+      return "7";
+    default:
+      return "-1";
   }
 }
 
@@ -154,7 +181,7 @@ void decode_heatpump_data(char* data, String actData[], PubSubClient &mqtt_clien
     if ((updatenow) || ( actData[Topic_Number] != Topic_Value )) {
       actData[Topic_Number] = Topic_Value;
       sprintf(log_msg, "received TOP%d %s: %s", Topic_Number, topics[Topic_Number], Topic_Value.c_str()); log_message(log_msg);
-      sprintf(mqtt_topic, "%s/%s", mqtt_topic_base, topics[Topic_Number]); mqtt_client.publish(mqtt_topic, Topic_Value.c_str(), MQTT_RETAIN_VALUES);
+      sprintf(mqtt_topic, "%s/%s/%s", mqtt_topic_base, mqtt_topic_values, topics[Topic_Number]); mqtt_client.publish(mqtt_topic, Topic_Value.c_str(), MQTT_RETAIN_VALUES);
     }
   }
 

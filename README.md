@@ -9,7 +9,7 @@ Een nederlandse vertaling [README_NL.md](README_NL.md) vind je hier.
 *Help on translation to other languages are welcome.*
 
 # Current releases
-Current beta release is version 0.5b. The [compiled binary](binaries/HeishaMon.ino.d1-v0.5.bin) can be installed on a Wemos D1 mini(and generally on any ESP8266 based board - but without guarantee ). Or download the code compile it yourself (see required libraries below).
+Current beta release is version 0.6b. The [compiled binary](binaries/HeishaMon.ino.d1-v0.6.bin) can be installed on a Wemos D1 mini(and generally on any ESP8266 based board - but without guarantee ). Or download the code compile it yourself (see required libraries below).
 
 # Using the software
 The current arduino beta image is able to communicate with  the Panasonic Aquarea H-series (and most probably from new J-series as well ,since PCB look identical). \
@@ -22,7 +22,9 @@ Serial 1 (GPIO2) can be used to connect another serial line (GND and TX from the
 
 All received data will be sent to different mqtt topics (see below for topic descriptions). There is also a 'panasonic_heat_pump/log' mqtt topic which provides debug logging and a hexdump of the received packets (if enabled in the web portal).
 
-You can connect a 1wire network on GPIO4 which will report in seperate mqtt topics (panasonic_heat_pump/1wire/sensorid). See more information below. 
+You can connect a 1wire network on GPIO4 which will report in seperate mqtt topics (panasonic_heat_pump/1wire/sensorid).
+
+The software is also able to measure Watt on a S0 port of two kWh meters. You only need to connect GPIO12 and GND to the S0 of one kWh meter and if you need a second kWh meter use GPIO14 and GND. It will report on mqtt topic panasonic_heat_pump/s0/1 and panasonic_heat_pump/s0/2 and also in the JSON output.
 
 Updating the firmware is as easy as going to the firmware menu and, after authentication with username 'admin' and password you provided during setup, uploading the binary there.
 
@@ -62,12 +64,15 @@ Use some 24 AWG shielded 4-conductors cable.
 
 
 ## How to connect
-Currently the PCB's are in (beta) production. We suggest to wait a while for them to be tested. \
-Soon you will be cable to order one of the PCB design directly from the project owners but ofcourse \
-we will share the schematics also. For now these are some schematics we are testing or have tested. \
+The PCB's needed to connect to the heatpump are designed by project members and are listed below. \
 [PCD Designs from the project members](PCB_Designs.md) \
 [Picture Wemos D1 beta](WEMOSD1.JPG) \
-[Picture ESP12-F](New_PCB.jpeg)
+[Picture ESP12-F](NewHeishamon.JPG)
+
+You can order completed PCB from some project members also. \
+[Tindie shop](https://www.tindie.com/stores/thehognl/) from Igor Ybema (aka TheHogNL) based in the Netherlands \
+[Trab.dk shop](https://www.trab.dk/en/search?controller=search&orderby=position&orderway=desc&search_query=panasonic&submit_search=)  from Morten Trab based in Denmark
+
 
 
 
