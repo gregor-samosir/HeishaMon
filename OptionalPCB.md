@@ -1,18 +1,20 @@
 ## Optional PCB:
 
-Optional PCB is also connected to HP via the CN-CNT ( in case using it and CZ-TAW1 ,Optional PCB is conected to HP , and on Optional PCB there is another CN-CNT to connect CZ-TAW1).
-In this way Optional PCB comunicate with HP in similar way to CZ-TAW1 - Next to(between) standard Magic Packets there specific commands from Optional PCB to HP ,and next to (beetwen) answers from HP there is a answer/confirmation to Optional PCB.
+Optional PCB is also connected to HP via the CN-CNT ( in case using it and CZ-TAW1 ,Optional PCB is connected to HP , and on Optional PCB there is another CN-CNT to connect CZ-TAW1).
+In this way Optional PCB communicate with HP in similar way to CZ-TAW1 - Next to(between) standard Magic Packets there specific commands from Optional PCB to HP ,and next to (between) answers from HP there is a answer/confirmation to Optional PCB.
 
 ### Optional PCB emulation support:
 Recent firmware allows (experimental) support for optional PCB emulation. This allows you to set SmartGrid or Demand Control values without having the optional pcb installed. Also you can send the temperatures normally connected to that board to the heatpump.
 
-You can publish mqtt messages towards the 'topic base/pcb/pcb topic', so for example "panasonic_heat_pump/pcb/Solar_Temp". For temperatures you just send the real temperature (the hexadecimal value will be calculated for your). For SmartGrid and Demand control you send the decimal representation of the hex value you want to send (see below for the possible hex values).
+You can publish mqtt messages towards the 'topic base/commands/pcb_topic', so for example "panasonic_heat_pump/commands/SetSolarTemp". For temperatures you just send the real temperature (the hexadecimal value will be calculated for your). For SmartGrid and Demand control you send the decimal representation of the hex value you want to send (see below for the possible hex values).
 
 Remark 1: You need to set in HP Service settings Optional PCB to YES ,and appropriate function as well to have effect in sending MQTT topics.
 
-Remark 2: Turning on Optional PCB in HP's options will couse ,that Room Thermo 1 input will not work anymore. It is now possible to use topics "panasonic_heat_pump/pcb/External_Thermostat_1_State" (with substitute Room Thermo 1 now)  and "panasonic_heat_pump/pcb/External_Thermostat_2_State".
+Remark 2: Turning on Optional PCB in HP's options will couse ,that Room Thermo 1 input will not work anymore (H/J series only). It is now possible to use PCB topics "SetExternalThermostat1State" (with substitute Room Thermo 1 now)  and "SetExternalThermostat2State".
 
-Remark 3: Setting in HP Service settings Optional PCB to YES gives expectation ,that Optional PCB emulator ( HeishaMon) will sent continiously Set Command. When comunication disapear (for around 1 min) HP generates H74 error and switches off. So ensure continiues communication is very important , be aware during switch off , factory default of HeishaMon , or similar action.
+Remark 3: Setting in HP Service settings Optional PCB to YES gives expectation ,that Optional PCB emulator ( HeishaMon) will sent continuously Optional PCB Set Command. When communication disappear (for around 40s) HP generates H74 error and switches off to StandBy. So ensure continiues communication is very important , be aware during switch off , factory default of HeishaMon , or similar action.
+
+Remark 4: If you enable optional pcb emulation the HeishaMon not boot into a wifi config hotspot if it can not connect to your previously configured wifi during boot. Also during wifi failures it will keep running and try to reconnect to the wifi instead of rebooting into wifi hotspotconfig. It is important to send often optional pcb commands to the heatpump and therefore it can not react on wifi failures like that. So if you have a running wifi and heishamon and need to reconfigure your wifi ssid or password you first need to factory reset your heishamon. Or if you need to reconfigure your HeishaMon in such situation you need the double reset factory reset trick to clear the config on the Heishamon.
 
 ### Set command byte decrypt:
 
@@ -24,28 +26,38 @@ Remark 3: Setting in HP Service settings Optional PCB to YES gives expectation ,
 | |-| 03 | 50 |   | Header  |
 | |-| 04 | 00 |   | Acknowledge for Z1/Z2/Pool Water Pump & Mixing valves state  |
 | |-| 05 | 00 |   | Acknowledge for Alarm  |
-| Heat_Cool_Mode<br/>Compressor_State<br/>SmartGrid_Mode<br/>External_Thermostat_1_State<br/>External_Thermostat_2_State |0/1<br/>0/1<br/>0/1/2/3<br/>0/1/2/3<br/>0/1/2/3<br/>| 06 | 40 | 1st bit = Heat/Cool<br/>2nd bit = Compressor state<br/>3rd/4th bit == SmartGrid Mode (00 = normal, 10 = HP/DHW off, 01 = Capacity 1, 11 = Capacity 2)<br/>5th/6th bit = Thermostat 1 (00 = no demand, 01 = cool demand, 10 = heat demand, 11 = heat and cool demand)<br/>7th/8th bit = Thermostat 2 (00 = no demand, 01 = cool demand, 10 = heat demand, 11 = heat and cool demand)  | SG ready values , External Compressor SW , Heat/Cool SW, Thermostat 1/2 |
-| Pool_Temp |Temp [C]| 07 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Pool  |
-| Buffer_Temp |Temp [C]| 08 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Buffer  |
+| SetHeatCoolMode<br/>SetCompressorState<br/>SetSmartGridMode<br/>SetExternalThermostat1State<br/>SetExternalThermostat2State |0/1<br/>0/1<br/>0/1/2/3<br/>0/1/2/3<br/>0/1/2/3<br/>| 06 | 40 | 1st bit = Heat/Cool<br/>2nd bit = Compressor state<br/>3rd/4th bit == SmartGrid Mode (00 = normal, 10 = HP/DHW off, 01 = Capacity 1, 11 = Capacity 2)<br/>5th/6th bit = Thermostat 1 (00 = no demand, 01 = cool demand, 10 = heat demand, 11 = heat and cool demand)<br/>7th/8th bit = Thermostat 2 (00 = no demand, 01 = cool demand, 10 = heat demand, 11 = heat and cool demand)  | SG ready values , External Compressor SW , Heat/Cool SW, Thermostat 1 (H/J series only), Thermostat 2 |
+| SetPoolTemp |Temp [C]| 07 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Pool  |
+| SetBufferTemp |Temp [C]| 08 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Buffer<br/>(H/J series only) |
 | |-| 09 | E5 but also93,92,91 (90) ,A2 |   | ?  |
-| Z1_Room_Temp |Temp [C]| 10 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Z1_Room   |
-| Z2_Room_Temp |Temp [C]| 11 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Z2_Room   |
+| SetZ1RoomTemp |Temp [C]| 10 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Z1_Room<br/>(H/J series only)  |
+| SetZ2RoomTemp |Temp [C]| 11 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Z2_Room   |
 | |-| 12 | 00 |   | 0 byte  |
-| Solar_Temp |Temp [C]| 13 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Solar  |
-| Demand_Control |from<br/>43 -5%<br/> to <br/>234 - 100%| 14 | EA | HEX:  EB-100% ,B8 - 75% ,85 -50%,52 - 25% ,2B - 5% | Demand Control |
-| Z2_Water_Temp |Temp [C]| 15 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Z2_Water   |
-| Z1_Water_Temp |Temp [C] | 16 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Z1_Water   |
+| SetSolarTemp |Temp [C]| 13 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Solar  |
+| SetDemandControl |from<br/>43 -5%<br/> to <br/>234 - 100%| 14 | EA | HEX:  EB-100% ,B8 - 75% ,85 -50%,52 - 25% ,2B - 5% | Demand Control |
+| SetZ2WaterTemp |Temp [C]| 15 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Z2_Water   |
+| SetZ1WaterTemp |Temp [C] | 16 | FF |  NTC 6,5kOhm resistance characteristic value | Temp. Z1_Water   |
 | |-| 17 | 00 |   | 0 byte  |
 | |-| 18 | 00 |   | 0 byte  |
 | |-| 19 | 2C |  CHECKSUM |  |
 
+### Answer/confirmation from HP to Optional PCB 
+
+Answer/confirmation contains also steering parameters :
+
+`71 11 01 50 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 2D`
+
+| Byte# | Possible Value | Value decrypt | Value Description |
+|:---- | ---- | ----- | ----:|
+| 04 | C4 |1st bit = Z1 Water pump <br/> 2nd bit = Z1 Mixing Valve + <br/> 3rd bit = Z1 Mixing Valve - <br/> 4th bit = Z2 Water pump <br/> 5th bit = Z2 Mixing Valve + <br/> 6th bit = Z2 Mixing Valve - <br/> 7th bit = Pool Water pump <br/> 8th bit = Solar Water pump <br/> |  |
+| 05 | 01 | 00 - No Alarm </br> 01 - Alarm | |
+
 ## NTC 6,5kOhm characteristic:
 
 Values are direct measurement of NTC thermistor conected to Optional PCB.
-It can be aproximate by function : Uref * (RT / (Rf + RT)) where Uref = 255 and Rf=6480. RT is calculated as R25 * exp(constant * (1 / (temp + K) - 1 / (T25 + K))) where R25 = 6340, T25=25, K=273.15, constant=3695 and temp the input temperature.
+It can be approximate by function : Uref * (RT / (Rf + RT)) where Uref = 255 and Rf=6480. RT is calculated as R25 * exp(constant * (1 / (temp + K) - 1 / (T25 + K))) where R25 = 6340, T25=25, K=273.15, constant=3695 and temp the input temperature.
 
 #### Exact values table 
-
 
 | HEX Val. | Temp [C] | HEX Val. | Temp [C] | Hex Val. | Temp [C] | Hex Val. | Temp [C] |
 |--- | --- | --- | --- | --- | --- | ---- | --- |
@@ -114,18 +126,6 @@ It can be aproximate by function : Uref * (RT / (Rf + RT)) where Uref = 255 and 
 | 3E | 54 | 7E | 25 | BE | 1 | FE | -64 |
 | 3F | 54 | 7F | 25 | BF | 0 | FF | -78 |
 
-### Answer/confirmation from HP to Optional PCB 
-
-Answer/confirmation contains also steering parameters :
-
-`71 11 01 50 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 2D`
-
-| Byte# | Possible Value | Value decrypt | Value Description |
-|:---- | ---- | ----- | ----:|
-| 04 | C4 |1st bit = Z1 Water pump <br/> 2nd bit = Z1 Mixing Valve + <br/> 3rd bit = Z1 Mixing Valve - <br/> 4th bit = Z2 Water pump <br/> 5th bit = Z2 Mixing Valve + <br/> 6th bit = Z2 Mixing Valve - <br/> 7th bit = Pool Water pump <br/> 8th bit = Solar Water pump <br/> |  |
-| 05 | 01 | 00 - No Alarm </br> 01 - Alarm | |
-
-
 ### To do:
 
-- Issues with Zones ( mixing valves , pump flows )
+- Byte #9 decode ( probably connected with Buffer)

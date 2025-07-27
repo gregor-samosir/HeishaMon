@@ -1,13 +1,21 @@
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
-#include <ESP8266WiFi.h>
-
 
 #define MQTT_RETAIN_VALUES 1
 
-void decode_heatpump_data(char* data, String actData[], PubSubClient &mqtt_client, void (*log_message)(char*), char* mqtt_topic_base, unsigned int updateAllTime);
+void resetlastalldatatime();
+void websocket_write_all(char *data, uint16_t data_len);
+
+
+String getDataValue(char* data, unsigned int Topic_Number);
+String getDataValueExtra(char* data, unsigned int Topic_Number);
+String getOptDataValue(char* data, unsigned int Topic_Number);
+void decode_heatpump_data(char* data, char* actData, PubSubClient &mqtt_client, void (*log_message)(char*), char* mqtt_topic_base, unsigned int updateAllTime);
+void decode_heatpump_data_extra(char* data, char* actDataExtra, PubSubClient &mqtt_client, void (*log_message)(char*), char* mqtt_topic_base, unsigned int updateAllTime);
+void decode_optional_heatpump_data(char* data, char* actOptDat, PubSubClient &mqtt_client, void (*log_message)(char*), char* mqtt_topic_base, unsigned int updateAllTime);
 
 String unknown(byte input);
+String getBit1(byte input);
 String getBit1and2(byte input);
 String getBit3and4(byte input);
 String getBit5and6(byte input);
@@ -18,16 +26,56 @@ String getRight3bits(byte input);
 String getIntMinus1(byte input);
 String getIntMinus128(byte input);
 String getIntMinus1Div5(byte input);
+String getIntMinus1Div50(byte input);
 String getIntMinus1Times10(byte input);
 String getIntMinus1Times50(byte input);
+String getValvePID(byte input);
 String getOpMode(byte input);
-String getEnergy(byte input);
+String getPower(byte input);
 String getHeatMode(byte input);
 String getModel(byte input);
+String getFirstByte(byte input);
+String getSecondByte(byte input);
+String getUintt16(char * data, byte input);
 
-#define NUMBER_OF_TOPICS 94 //last topic number + 1
+static const char _unknown[] PROGMEM = "unknown";
 
-static const char * topics[] = {
+
+
+#define NUMBER_OF_TOPICS 139 //last topic number + 1
+#define NUMBER_OF_TOPICS_EXTRA 6 //last topic number + 1
+#define NUMBER_OF_OPT_TOPICS 7 //last topic number + 1
+#define MAX_TOPIC_LEN 42 // max length + 1
+
+static const char optTopics[][20] PROGMEM = {
+  "Z1_Water_Pump", // OPT0
+  "Z1_Mixing_Valve", // OPT1
+  "Z2_Water_Pump", // OPT2
+  "Z2_Mixing_Valve", // OPT3
+  "Pool_Water_Pump", // OPT4
+  "Solar_Water_Pump", // OPT5
+  "Alarm_State", // OPT6
+};
+
+static const char xtopics[][MAX_TOPIC_LEN] PROGMEM = {
+  "Heat_Power_Consumption_Extra", //XTOP0
+  "Cool_Power_Consumption_Extra", //XTOP1
+  "DHW_Power_Consumption_Extra", //XTOP2
+  "Heat_Power_Production_Extra",  //XTOP3
+  "Cool_Power_Production_Extra",  //XTOP4
+  "DHW_Power_Production_Extra",  //XTOP5
+};
+
+static const byte xtopicBytes[] PROGMEM = { //can store the index as byte (8-bit unsigned humber) as there aren't more then 255 bytes (actually only 203 bytes) to decode
+  14,      //XTOP0
+  16,      //XTOP1
+  18,      //XTOP2
+  20,      //XTOP3
+  22,      //XTOP4
+  24,      //XTOP5
+};
+
+static const char topics[][MAX_TOPIC_LEN] PROGMEM = {
   "Heatpump_State",          //TOP0
   "Pump_Flow",               //TOP1
   "Force_DHW_State",         //TOP2
@@ -43,8 +91,8 @@ static const char * topics[] = {
   "Operations_Counter",      //TOP12
   "Main_Schedule_State",     //TOP13
   "Outside_Temp",            //TOP14
-  "Heat_Energy_Production",  //TOP15
-  "Heat_Energy_Consumption", //TOP16
+  "Heat_Power_Production",  //TOP15
+  "Heat_Power_Consumption", //TOP16
   "Powerful_Mode_Time",      //TOP17
   "Quiet_Mode_Level",        //TOP18
   "Holiday_Mode_State",      //TOP19
@@ -66,10 +114,10 @@ static const char * topics[] = {
   "Z2_Cool_Request_Temp",    //TOP35
   "Z1_Water_Temp",           //TOP36
   "Z2_Water_Temp",           //TOP37
-  "Cool_Energy_Production",  //TOP38
-  "Cool_Energy_Consumption", //TOP39
-  "DHW_Energy_Production",   //TOP40
-  "DHW_Energy_Consumption",  //TOP41
+  "Cool_Power_Production",  //TOP38
+  "Cool_Power_Consumption", //TOP39
+  "DHW_Power_Production",   //TOP40
+  "DHW_Power_Consumption",  //TOP41
   "Z1_Water_Target_Temp",    //TOP42
   "Z2_Water_Target_Temp",    //TOP43
   "Error",                   //TOP44
@@ -118,13 +166,58 @@ static const char * topics[] = {
   "Z2_Cool_Curve_Target_Low_Temp",       //TOP87
   "Z2_Cool_Curve_Outside_High_Temp",     //TOP88
   "Z2_Cool_Curve_Outside_Low_Temp",      //TOP89
-  "Room_Heater_Operations_Hours", //TOP90
-  "DHW_Heater_Operations_Hours",  //TOP91
-  "Heat_Pump_Model", //TOP92,
-  "Pump_Duty", //TOP93
+  "Room_Heater_Operations_Hours",        //TOP90
+  "DHW_Heater_Operations_Hours",         //TOP91
+  "Heat_Pump_Model",         //TOP92
+  "Pump_Duty",               //TOP93
+  "Zones_State",             //TOP94
+  "Max_Pump_Duty",           //TOP95
+  "Heater_Delay_Time",       //TOP96
+  "Heater_Start_Delta",      //TOP97
+  "Heater_Stop_Delta",       //TOP98
+  "Buffer_Installed",        //TOP99
+  "DHW_Installed",           //TOP100
+  "Solar_Mode",              //TOP101
+  "Solar_On_Delta",          //TOP102
+  "Solar_Off_Delta",         //TOP103
+  "Solar_Frost_Protection",  //TOP104
+  "Solar_High_Limit",        //TOP105
+  "Pump_Flowrate_Mode",      //TOP106
+  "Liquid_Type",             //TOP107
+  "Alt_External_Sensor",     //TOP108
+  "Anti_Freeze_Mode",        //TOP109
+  "Optional_PCB",            //TOP110
+  "Z1_Sensor_Settings",      //TOP111
+  "Z2_Sensor_Settings",      //TOP112
+  "Buffer_Tank_Delta",       //TOP113
+  "External_Pad_Heater",     //TOP114
+  "Water_Pressure",          //TOP115
+  "Second_Inlet_Temp",       //TOP116
+  "Economizer_Outlet_Temp",  //TOP117
+  "Second_Room_Thermostat_Temp",//TOP118
+  "External_Control",        //TOP119
+  "External_Heat_Cool_Control", //TOP120
+  "External_Error_Signal",   //TOP121
+  "External_Compressor_Control", //TOP122
+  "Z2_Pump_State",           //TOP123
+  "Z1_Pump_State",           //TOP124
+  "TwoWay_Valve_State",      //TOP125
+  "ThreeWay_Valve_State2",   //TOP126
+  "Z1_Valve_PID",            //TOP127
+  "Z2_Valve_PID",            //TOP128
+  "Bivalent_Control",        //TOP129
+  "Bivalent_Mode",           //TOP130
+  "Bivalent_Start_Temp",     //TOP131
+  "Bivalent_Advanced_Heat",  //TOP132
+  "Bivalent_Advanced_DHW",   //TOP133
+  "Bivalent_Advanced_Start_Temp",//TOP134
+  "Bivalent_Advanced_Stop_Temp",//TOP135
+  "Bivalent_Advanced_Start_Delay",//TOP136
+  "Bivalent_Advanced_Stop_Delay",//TOP137
+  "Bivalent_Advanced_DHW_Delay",//TOP138
 };
 
-static const byte topicBytes[] = { //can store the index as byte (8-bit unsigned humber) as there aren't more then 255 bytes (actually only 203 bytes) to decode
+static const byte topicBytes[] PROGMEM = { //can store the index as byte (8-bit unsigned humber) as there aren't more then 255 bytes (actually only 203 bytes) to decode
   4,      //TOP0
   0,      //TOP1
   4,      //TOP2
@@ -199,8 +292,8 @@ static const byte topicBytes[] = { //can store the index as byte (8-bit unsigned
   101,    //TOP71
   86,     //TOP72
   87,     //TOP73
-  88,     //TOP74
-  89,     //TOP75
+  89,     //TOP74
+  88,     //TOP75
   28,     //TOP76
   83,     //TOP77
   85,     //TOP78
@@ -209,21 +302,76 @@ static const byte topicBytes[] = { //can store the index as byte (8-bit unsigned
   28,     //TOP81
   79,     //TOP82
   80,     //TOP83
-  81,     //TOP84
-  82,     //TOP85
+  82,     //TOP84
+  81,     //TOP85
   90,     //TOP86
   91,     //TOP87
-  92,     //TOP88
-  93,     //TOP89
+  93,     //TOP88
+  92,     //TOP89
   0,      //TOP90
   0,      //TOP91
-  132,    //TOP92
+  0,      //TOP92
   172,    //TOP93
+  6,      //TOP94
+  45,     //TOP95
+  104,    //TOP96
+  105,    //TOP97
+  106,    //TOP98
+  24,     //TOP99
+  24,     //TOP100
+  24,     //TOP101
+  61,     //TOP102
+  62,     //TOP103
+  63,     //TOP104
+  64,     //TOP105
+  29,     //TOP106
+  20,     //TOP107
+  20,     //TOP108
+  20,     //TOP109
+  20,     //TOP110
+  22,     //TOP111
+  22,     //TOP112
+  59,     //TOP113
+  25,     //TOP114
+  125,    //TOP115
+  126,    //TOP116
+  127,    //TOP117
+  128,    //TOP118
+  23,     //TOP119
+  23,     //TOP120
+  23,     //TOP121
+  23,     //TOP122
+  116,    //TOP123
+  116,    //TOP124
+  116,    //TOP125
+  116,    //TOP126
+  177,    //TOP127
+  178,    //TOP128
+  26,    //TOP129
+  26,    //TOP130
+  65,    //TOP131
+  26,    //TOP132
+  26,    //TOP133
+  66,    //TOP134
+  68,    //TOP135
+  67,    //TOP136
+  69,    //TOP137
+  70,    //TOP138
+};
+
+
+typedef String (*xtopicFP)(char*, byte);
+static const xtopicFP xtopicFunctions[] PROGMEM = {
+  getUintt16,         //XTOP0
+  getUintt16,         //XTOP1
+  getUintt16,         //XTOP2
+  getUintt16,         //XTOP3
+  getUintt16,         //XTOP4
+  getUintt16,         //XTOP5
 };
 
 typedef String (*topicFP)(byte);
-
-static const topicFP topicFunctions[] = {
+static const topicFP topicFunctions[] PROGMEM = {
   getBit7and8,         //TOP0
   unknown,             //TOP1
   getBit1and2,         //TOP2
@@ -239,8 +387,8 @@ static const topicFP topicFunctions[] = {
   unknown,             //TOP12
   getBit1and2,         //TOP13
   getIntMinus128,      //TOP14
-  getEnergy,           //TOP15
-  getEnergy,           //TOP16
+  getPower,            //TOP15
+  getPower,            //TOP16
   getRight3bits,       //TOP17
   getBit3and4and5,     //TOP18
   getBit3and4,         //TOP19
@@ -262,10 +410,10 @@ static const topicFP topicFunctions[] = {
   getIntMinus128,      //TOP35
   getIntMinus128,      //TOP36
   getIntMinus128,      //TOP37
-  getEnergy,           //TOP38
-  getEnergy,           //TOP39
-  getEnergy,           //TOP40
-  getEnergy,           //TOP41
+  getPower,            //TOP38
+  getPower,            //TOP39
+  getPower,            //TOP40
+  getPower,            //TOP41
   getIntMinus128,      //TOP42
   getIntMinus128,      //TOP43
   unknown,             //TOP44
@@ -290,7 +438,7 @@ static const topicFP topicFunctions[] = {
   getIntMinus1Times10, //TOP63
   getIntMinus1Div5,    //TOP64
   getIntMinus1Times50, //TOP65
-  getIntMinus1,        //TOP66
+  getIntMinus1Times50, //TOP66
   getIntMinus1Div5,    //TOP67
   getBit5and6,         //TOP68
   getBit5and6,         //TOP69
@@ -316,35 +464,111 @@ static const topicFP topicFunctions[] = {
   getIntMinus128,      //TOP89
   unknown,             //TOP90
   unknown,             //TOP91
-  getModel,			       //TOP92
-  getIntMinus1,             //TOP93
+  unknown,			       //TOP92
+  getIntMinus1,        //TOP93
+  getBit1and2,         //TOP94
+  getIntMinus1,        //TOP95
+  getIntMinus1,        //TOP96
+  getIntMinus128,      //TOP97
+  getIntMinus128,      //TOP98
+  getBit5and6,         //TOP99
+  getBit7and8,         //TOP100
+  getBit3and4,         //TOP101
+  getIntMinus128,      //TOP102
+  getIntMinus128,      //TOP103
+  getIntMinus128,      //TOP104
+  getIntMinus128,      //TOP105
+  getBit3and4,         //TOP106
+  getBit1,             //TOP107
+  getBit3and4,         //TOP108
+  getBit5and6,         //TOP109
+  getBit7and8,         //TOP110  
+  getSecondByte,       //TOP111
+  getFirstByte,        //TOP112 
+  getIntMinus128,      //TOP113
+  getBit3and4,         //TOP114
+  getIntMinus1Div50,   //TOP115
+  getIntMinus128,      //TOP116
+  getIntMinus128,      //TOP117
+  getIntMinus128,      //TOP118
+  getBit7and8,         //TOP119
+  getBit5and6,         //TOP120
+  getBit3and4,         //TOP121
+  getBit1and2,         //TOP122
+  getBit1and2,         //TOP123
+  getBit3and4,         //TOP124
+  getBit5and6,         //TOP125
+  getBit7and8,         //TOP126
+  getValvePID,        //TOP127
+  getValvePID,        //TOP128
+  getBit7and8,      //TOP129
+  getBit5and6,      //TOP130
+  getIntMinus128,      //TOP131
+  getBit3and4,      //TOP132
+  getBit1and2,      //TOP133
+  getIntMinus128,      //TOP134
+  getIntMinus128,      //TOP135
+  getIntMinus1,      //TOP136
+  getIntMinus1,      //TOP137
+  getIntMinus1,      //TOP138
 };
 
-static const char *DisabledEnabled[] = {"2", "Disabled", "Enabled"};
-static const char *BlockedFree[] = {"2", "Blocked", "Free"};
-static const char *OffOn[] = {"2", "Off", "On"};
-static const char *InactiveActive[] = {"2", "Inactive", "Active"};
-static const char *HolidayState[] = {"3", "Off", "Scheduled", "Active"};
-static const char *OpModeDesc[] = {"9", "Heat", "Cool", "Auto(heat)", "DHW", "Heat+DHW", "Cool+DHW", "Auto(heat)+DHW","Auto(cool)","Auto(cool)+DHW"};
-static const char *Powerfulmode[] = {"4", "Off", "30min", "60min", "90min"};
-static const char *Quietmode[] = {"4", "Off", "Level 1", "Level 2", "Level 3"};
-static const char *Valve[] = {"2", "Room", "DHW"};
-static const char *LitersPerMin[] = {"value", "l/min"};
-static const char *RotationsPerMin[] = {"value", "r/min"};
-static const char *Pressure[] = {"value", "Kgf/cm2"};
-static const char *Celsius[] = {"value", "&deg;C"};
-static const char *Kelvin[] = {"value", "K"};
-static const char *Hertz[] = {"value", "Hz"};
-static const char *Counter[] = {"value", "count"};
-static const char *Hours[] = {"value", "hours"};
-static const char *Watt[] = {"value", "Watt"};
-static const char *ErrorState[] = {"value", "Error"};
-static const char *Ampere[] = {"value", "Ampere"};
-static const char *Minutes[] = {"value", "Minutes"};
-static const char *Duty[] = {"value", "Duty"};
-static const char *HeatCoolModeDesc[] = {"2", "Comp. Curve", "Direct"};
-static const char *Model[] = {"15", "WH-MDC05H3E5", "WH-MDC07H3E5", "IDU:WH-SXC09H3E5, ODU:WH-UX09HE5", "IDU:WH-SDC09H3E8, ODU:WH-UD09HE8", "IDU:WH-SXC09H3E8, ODU:WH-UX09HE8", "IDU:WH-SXC12H9E8, ODU:WH-UX12HE8", "IDU:WH-SXC16H9E8, ODU:WH-UX16HE8", "IDU:WH-SDC05H3E5, ODU:WH-UD05HE5", "IDU:WH-SDC0709J3E5, ODU:WH-UD09JE5", "WH-MDC05J3E5", "WH-MDC09H3E5", "WH-MXC09H3E5", "IDU:WH-ADC0309J3E5, ODU:WH-UD09JE5", "IDU:WH-ADC0916H9E8, ODU:WH-UX12HE8", "IDU:WH-SQC09H3E8, ODU:WH-UQ09HE8"};
-static const char **topicDescription[] = {
+static const char *DisabledEnabled[] PROGMEM = {"2", "Disabled", "Enabled"};
+static const char *BlockedFree[] PROGMEM = {"2", "Blocked", "Free"};
+static const char *OffOn[] PROGMEM = {"2", "Off", "On"};
+static const char *InactiveActive[] PROGMEM = {"2", "Inactive", "Active"};
+static const char *PumpFlowRateMode[] PROGMEM = {"2", "DeltaT", "Max flow"};
+static const char *HolidayState[] PROGMEM = {"3", "Off", "Scheduled", "Active"};
+static const char *OpModeDesc[] PROGMEM = {"9", "Heat", "Cool", "Auto(heat)", "DHW", "Heat+DHW", "Cool+DHW", "Auto(heat)+DHW", "Auto(cool)", "Auto(cool)+DHW"};
+static const char *Powerfulmode[] PROGMEM = {"4", "Off", "30min", "60min", "90min"};
+static const char *Quietmode[] PROGMEM = {"4", "Off", "Level 1", "Level 2", "Level 3"};
+static const char *Valve[] PROGMEM = {"2", "Room", "DHW"};
+static const char *Valve2[] PROGMEM = {"2", "Cool", "Heat"};
+static const char *MixingValve[] PROGMEM = {"4", "Off", "Decrease","Increase","Invalid"};
+static const char *LitersPerMin[] PROGMEM = {"0", "l/min"};
+static const char *RotationsPerMin[] PROGMEM = {"0", "r/min"};
+static const char *Bar[] PROGMEM = {"0", "Bar"};
+static const char *Pressure[] PROGMEM = {"0", "Kgf/cm2"};
+static const char *Celsius[] PROGMEM = {"0", "°C"};
+static const char *Kelvin[] PROGMEM = {"0", "K"};
+static const char *Hertz[] PROGMEM = {"0", "Hz"};
+static const char *Counter[] PROGMEM = {"0", "count"};
+static const char *Hours[] PROGMEM = {"0", "hours"};
+static const char *Watt[] PROGMEM = {"0", "Watt"};
+static const char *ErrorState[] PROGMEM = {"0", "Error"};
+static const char *Ampere[] PROGMEM = {"0", "Ampere"};
+static const char *Minutes[] PROGMEM = {"0", "Minutes"};
+static const char *Duty[] PROGMEM = {"0", "Duty"};
+static const char *ZonesState[] PROGMEM = {"3", "Zone1 active", "Zone2 active", "Zone1 and zone2 active"};
+static const char *HeatCoolModeDesc[] PROGMEM = {"2", "Comp. Curve", "Direct"};
+static const char *SolarModeDesc[] PROGMEM = {"3", "Disabled", "Buffer", "DHW"};
+static const char *ZonesSensorType[] PROGMEM = {"4", "Water Temperature", "External Thermostat", "Internal Thermostat", "Thermistor"};
+static const char *LiquidType[] PROGMEM = {"2", "Water", "Glycol"};
+static const char *ExtPadHeaterType[] PROGMEM = {"3", "Disabled", "Type-A","Type-B"};
+static const char *Bivalent[] PROGMEM = {"3", "Alternative", "Parallel", "Advanced Parallel"};
+static const char *Percent[] PROGMEM = {"0", "%"};
+static const char *Model[] PROGMEM = {"0", "Model"};
+
+static const char **opttopicDescription[] PROGMEM = {
+  OffOn,          //OPT0
+  MixingValve,    //OPT1
+  OffOn,          //OPT2
+  MixingValve,    //OPT3
+  OffOn,          //OPT4
+  OffOn,          //OPT5
+  OffOn,          //OPT6
+};
+
+static const char **xtopicDescription[] PROGMEM = {
+  Watt,           //XTOP0
+  Watt,           //XTOP1
+  Watt,           //XTOP2
+  Watt,           //XTOP3
+  Watt,           //XTOP4
+  Watt,           //XTOP5
+};
+
+static const char **topicDescription[] PROGMEM = {
   OffOn,           //TOP0
   LitersPerMin,    //TOP1
   DisabledEnabled, //TOP2
@@ -437,6 +661,51 @@ static const char **topicDescription[] = {
   Celsius,         //TOP89
   Hours,           //TOP90
   Hours,           //TOP91
-  Model,		       //TOP92
+  Model,           //TOP92
   Duty,            //TOP93
+  ZonesState,      //TOP94
+  Duty,            //TOP95
+  Minutes,         //TOP96
+  Kelvin,          //TOP97
+  Kelvin,          //TOP98
+  DisabledEnabled, //TOP99
+  DisabledEnabled, //TOP100
+  SolarModeDesc,   //TOP101
+  Kelvin,          //TOP102
+  Kelvin,          //TOP103
+  Celsius,         //TOP104
+  Celsius,         //TOP105
+  PumpFlowRateMode,//TOP106
+  LiquidType,      //TOP107
+  DisabledEnabled, //TOP108
+  DisabledEnabled, //TOP109
+  DisabledEnabled, //TOP110
+  ZonesSensorType, //TOP111
+  ZonesSensorType, //TOP112
+  Kelvin,          //TOP113
+  ExtPadHeaterType,//TOP114
+  Bar,             //TOP115
+  Celsius,         //TOP116
+  Celsius,         //TOP117
+  Celsius,         //TOP118
+  DisabledEnabled, //TOP119
+  DisabledEnabled, //TOP120
+  DisabledEnabled, //TOP121
+  DisabledEnabled, //TOP122
+  OffOn,           //TOP123
+  OffOn,           //TOP124
+  Valve2,          //TOP125
+  Valve,           //TOP126
+  Percent,         //TOP127
+  Percent,         //TOP128
+  DisabledEnabled, //TOP129
+  Bivalent,        //TOP130
+  Celsius,         //TOP131
+  DisabledEnabled, //TOP132
+  DisabledEnabled, //TOP133
+  Celsius,         //TOP134
+  Celsius,         //TOP135
+  Minutes,         //TOP136
+  Minutes,         //TOP137
+  Minutes,         //TOP138
 };
