@@ -145,7 +145,10 @@ void ntpReload(settingsStruct *heishamonSettings) {
   setenv("TZ", tzCfg.value, 1);
   tzset();
 
-  char ntpList[sizeof(heishamonSettings->ntp_servers)];
+  // static: configTzTime()/sntp_setservername() only stores the pointer we pass in and
+  // resolves it asynchronously later, so the buffer these hostnames live in must outlive
+  // this function call - a stack-local array here left SNTP holding a dangling pointer.
+  static char ntpList[sizeof(heishamonSettings->ntp_servers)];
   strlcpy(ntpList, heishamonSettings->ntp_servers, sizeof(ntpList));
   char *servers[3] = { NULL, NULL, NULL };
   uint8_t count = 0;

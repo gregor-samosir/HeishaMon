@@ -55,7 +55,7 @@ jobs:
         run: |
           arduino-cli core update-index
           arduino-cli core install esp8266:esp8266
-          arduino-cli core install esp32:esp32
+          arduino-cli core install esp32:esp32@3.3.11
 
       - name: Install dependencies
         run: arduino-cli lib install ringbuffer pubsubclient arduinojson dallastemperature onewire "Adafruit NeoPixel"
