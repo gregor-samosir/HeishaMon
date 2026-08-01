@@ -155,6 +155,11 @@ TOP135 | main/Bivalent_Advanced_Stop_Temp	 | Bivalent adv. par. heat stop temp
 TOP136 | main/Bivalent_Advanced_Start_Delay	 | Bivalent adv. par. heat start delay
 TOP137 | main/Bivalent_Advanced_Stop_Delay	 | Bivalent adv. par. heat stop delay
 TOP138 | main/Bivalent_Advanced_DHW_Delay	 | Bivalent adv. par. DHW delay
+TOP139 | main/Heating_Control | Heating Control
+TOP140 | main/Smart_DHW | Smart DHW
+TOP141 | main/Quiet_Mode_Priority | Quiet Mode Priority (0=sound, 1=capacity)
+TOP142 | main/Expansion_Valve | Expansion Valve (Steps)
+TOP143 | main/DHW_Sensor_Selection | DHW tank sensor selection (0=Top, 1=Center) (K/L series All-In-One only)
 
 
 
@@ -222,6 +227,16 @@ SET35 | SetBivalentMode | Set bivalent mode | 0=alternative, 1=parallel, 2=advan
 SET36 | SetBivalentStartTemp | Set bivalent start temp | -15 to 35
 SET37 | SetBivalentAPStartTemp | Set bivalent adv. par. start temp | -15 to 35
 SET38 | SetBivalentAPStopTemp | Set bivalent adv. par. stop temp | -15 to 35
+SET39 | SetHeatingControl | Set heating control | 0=comfort, 1=efficiency
+SET40 | SetSmartDHW | Set SmartDHW | 0=variable, 1=standard
+SET41 | SetQuietModePriority | Set Quiet Mode Priority | 0=sound, 1=capacity
+SET42 | SetPumpFlowrateMode | Set Pump Flowrate Mode | 0=deltaT, 1=max. duty
+SET43 | SetDHWSensorSelection | Set DHW tank sensor selection (K/L series All-In-One only) | 0=Top, 1=Center
+SET44 | SetDHWHeaterState | Allow DHW backup/booster heater | 0=blocked, 1=free
+SET45 | SetRoomHeaterState | Allow Room backup/booster heater | 0=blocked, 1=free
+SET46 | SetHeaterOnOutdoorTemp | Outdoor temperature for heater ON | -15 to 20
+SET47 | SetForceHeater | Force heater mode (emergency heating), same as the heater button on the remote. State is reported in TOP68 | 0=off, 1=on
+SET48 | SetReset | Reset/confirm active heatpump fault code (e.g. H72). Equivalent to pressing "Reset" on the CZ-TAW1 remote / indoor unit panel. Writes byte 8 of the outgoing query. Clears latched errors that soft power-cycle (`SetHeatpump` 0→1) cannot clear. | 0=no action, 1=reset
 
 
 *If you operate your heatpump in water mode with direct temperature setup: topics ending xxxRequestTemperature will set the absolute target temperature.*

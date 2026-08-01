@@ -40,6 +40,7 @@ unsigned int set_z2_cool_request_temperature(char *msg, unsigned char *cmd, char
 unsigned int set_force_DHW(char *msg, unsigned char *cmd, char *log_msg);
 unsigned int set_force_defrost(char *msg, unsigned char *cmd, char *log_msg);
 unsigned int set_force_sterilization(char *msg, unsigned char *cmd, char *log_msg);
+unsigned int set_force_heater(char *msg, unsigned char *cmd, char *log_msg);
 unsigned int set_holiday_mode(char *msg, unsigned char *cmd, char *log_msg);
 unsigned int set_powerful_mode(char *msg, unsigned char *cmd, char *log_msg);
 unsigned int set_operation_mode(char *msg, unsigned char *cmd, char *log_msg);
@@ -66,6 +67,14 @@ unsigned int set_bivalent_ap_start_temp(char *msg, unsigned char *cmd, char *log
 unsigned int set_bivalent_ap_stop_temp(char *msg, unsigned char *cmd, char *log_msg);
 unsigned int set_external_control(char *msg, unsigned char *cmd, char *log_msg);
 unsigned int set_external_error(char *msg, unsigned char *cmd, char *log_msg);
+unsigned int set_heatingcontrol(char *msg, unsigned char *cmd, char *log_msg);
+unsigned int set_smart_dhw(char *msg, unsigned char *cmd, char *log_msg);
+unsigned int set_quiet_mode_priority(char *msg, unsigned char *cmd, char *log_msg);
+unsigned int set_pump_flowrate_mode(char *msg, unsigned char *cmd, char *log_msg);
+unsigned int set_dhw_sensor_selection(char *msg, unsigned char *cmd, char *log_msg);
+unsigned int set_dhw_heater_state(char *msg, unsigned char *cmd, char *log_msg);
+unsigned int set_room_heater_state(char *msg, unsigned char *cmd, char *log_msg);
+unsigned int set_heater_on_outdoor_temp(char *msg, unsigned char *cmd, char *log_msg);
 
 //optional pcb commands
 unsigned int set_heat_cool_mode(char *msg, char *log_msg);
@@ -113,6 +122,8 @@ const cmdStruct commands[] PROGMEM = {
   { "SetForceDefrost", set_force_defrost },
   // set mode to force sterilization by sending 1
   { "SetForceSterilization", set_force_sterilization },
+  // set mode to force heater (emergency heating) by sending 1, off will be 0
+  { "SetForceHeater", set_force_heater },
   // set Holiday mode by sending 1, off will be 0
   { "SetHolidayMode", set_holiday_mode },
   // set Powerful mode by sending 0 = off, 1 for 30min, 2 for 60min, 3 for 90 min
@@ -153,6 +164,14 @@ const cmdStruct commands[] PROGMEM = {
   { "SetBivalentAPStartTemp", set_bivalent_ap_start_temp },
   // bivalent AP stop temp -  set from -15C to 35C
   { "SetBivalentAPStopTemp", set_bivalent_ap_stop_temp },
+  { "SetHeatingControl", set_heatingcontrol },
+  { "SetSmartDHW", set_smart_dhw },
+  { "SetQuietModePriority", set_quiet_mode_priority },
+  { "SetPumpFlowrateMode", set_pump_flowrate_mode },
+  { "SetDHWSensorSelection", set_dhw_sensor_selection },
+  { "SetDHWHeaterState", set_dhw_heater_state },
+  { "SetRoomHeaterState", set_room_heater_state },
+  { "SetHeaterOnOutdoorTemp", set_heater_on_outdoor_temp },
 };
 
 struct optCmdStruct{

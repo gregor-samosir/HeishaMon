@@ -11,7 +11,7 @@ piotools
 build_output
 firmware.map
 firmware.asm
-*.bin
 *.map
 *.elf
 
+binaries/prepare_release.bat
