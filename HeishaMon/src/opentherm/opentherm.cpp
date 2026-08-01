@@ -206,7 +206,7 @@ void OpenTherm::process() {
     setIdleState();
     smartPowerState = LOW_POWER;
     smartPowerEnabled = false;
-    OpenThermStatus::NOT_INITIALIZED;
+    status = OpenThermStatus::NOT_INITIALIZED;
   }
 
   if (st == OpenThermStatus::READY) return;

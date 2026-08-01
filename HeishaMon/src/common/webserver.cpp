@@ -36,7 +36,9 @@
   #include <WiFiClient.h>
   #include <WiFiServer.h>
 
-  #define LWIP_SO_RCVBUF 1
+  #ifndef LWIP_SO_RCVBUF
+    #define LWIP_SO_RCVBUF 1
+  #endif
 
   #include "strncasestr.h"
   #include "strnstr.h"
