@@ -59,6 +59,21 @@ const byte DNS_PORT = 53;
 
 settingsStruct heishamonSettings;
 
+// Explicit forward declarations: PlatformIO's automatic prototype generator
+// (unlike arduino-cli's) can misplace or drop prototypes for functions that
+// are defined inside #ifdef blocks, causing "not declared in this scope"
+// errors. These cover functions called before their point of definition.
+void check_wifi();
+void setupOTA();
+void mqtt_reconnect();
+bool readSerial();
+bool send_command(byte* command, int length);
+void mqttPublish(char* topic, char* subtopic, char* value);
+void mqttPublish(char* topic, char* subtopic, char* value, bool retain);
+#ifdef ESP8266
+void send_optionalpcb_query();
+#endif
+
 uint32_t neoPixelState = 0; //running neoPixelState
 bool inSetup; //bool to check if still booting
 volatile bool sending = false; // mutex for sending data
