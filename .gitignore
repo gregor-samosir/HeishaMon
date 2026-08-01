@@ -4,6 +4,7 @@
 
 .vs
 .pio
+.venv-pio312
 piotools
 .vscode
 .pioenvs

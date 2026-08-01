@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Wrapper for PlatformIO's esp32 build.
+#
+# The esp32 platform (pioarduino fork) requires Python 3.10+, but the
+# system default python3 here is 3.9. Rather than changing the system
+# python3/pip3 (which other tools may depend on), this uses an isolated
+# venv (.venv-pio312, gitignored) built from Homebrew's python@3.12.
+#
+# Usage: ./pio-esp32 [pio args...]   (defaults to: run -e esp32)
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="$REPO_ROOT/.venv-pio312"
+PIO_BIN="$VENV_DIR/bin/pio"
+
+if [ ! -x "$PIO_BIN" ]; then
+  echo "Setting up $VENV_DIR (one-time)..." >&2
+  PY312="$(command -v python3.12 || echo /opt/homebrew/bin/python3.12)"
+  if [ ! -x "$PY312" ]; then
+    echo "python3.12 not found. Install it first: brew install python@3.12" >&2
+    exit 1
+  fi
+  "$PY312" -m venv "$VENV_DIR"
+  "$VENV_DIR/bin/pip" install -q --upgrade pip platformio
+fi
+
+if [ "$#" -eq 0 ]; then
+  set -- run -e esp32
+fi
+
+exec "$PIO_BIN" "$@"
